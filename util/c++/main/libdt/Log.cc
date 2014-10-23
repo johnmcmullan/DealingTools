@@ -113,8 +113,8 @@ namespace dt {
 
     pthread_mutex_lock(&lock);
 
-    fprintf(logfile, "%s %s[%d:t@%d]/%s:  ", timestamp, module,
-	    (int) pid, pthread_self(), prioritynames[priority]);
+    fprintf(logfile, "%s %s[%d:t@%ld]/%s:  ", timestamp, module,
+	    (int) pid, (long) pthread_self(), prioritynames[priority]);
 
     va_list ap;
     va_start(ap, fmt);
@@ -176,12 +176,12 @@ namespace dt {
   void Log::IncreaseLogPriority() {
     if (logpriority == LOG_DEBUG)
       return;
-    ((int) logpriority)++;
+	logpriority = static_cast<priority_t>(static_cast<int>(logpriority) + 1);
   }
   void Log::DecreaseLogPriority() {
     if (logpriority == LOG_EMERG)
       return;
-    ((int) logpriority)--;
+	logpriority = static_cast<priority_t>(static_cast<int>(logpriority) - 1);
   }
   priority_t Log::GetLogPriority() {
     return logpriority;
