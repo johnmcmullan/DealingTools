@@ -16,63 +16,70 @@
 
 package dealingtools.orc.deapi;
 
-import java.io.*;
-import java.net.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.net.Socket;
+import java.net.UnknownHostException;
 import java.text.DecimalFormat;
 
+
 public class Connection {
-    private Socket deapi;
-    private BufferedInputStream inbuf;
-    private BufferedOutputStream outbuf;
+	private Socket sock;
+    private Reader inbuf;
+    private Writer outbuf;
     static private int HeaderSize = 10;
 
-    public Connection(String hostname, String service)
-	throws IOException, UnknownHostException {
-	Integer port;
+    public Connection(String hostname, String service) throws IOException, UnknownHostException {
+    	Integer port;
 
-	// was service a port or a servicename?
-	try {
-	    port = new Integer(service);
-	} catch (NumberFormatException e) {
-	    // OK, it must be a service name, do this for now
-	    port = new Integer(6980);
-	}
-	initialize(hostname, port.intValue());
+    	// was service a port or a servicename?
+    	try {
+    		port = new Integer(service);
+    	} catch (NumberFormatException e) {
+    		// OK, it must be a service name, do this for now
+    		port = new Integer(6980);
+    	}
+    	initialize(hostname, port.intValue());
     }
 
-    public Connection(String hostname, int port)
-	throws IOException, UnknownHostException {
-	initialize(hostname, port);
+    public Connection(String hostname, int port) throws IOException, UnknownHostException {
+    	initialize(hostname, port);
     }
 
-    private void initialize(String hostname, int port)
-	throws IOException, UnknownHostException {
-	deapi = new Socket(hostname, port);
-	inbuf = new BufferedInputStream(deapi.getInputStream());
-	outbuf = new BufferedOutputStream(deapi.getOutputStream());
+    private void initialize(String hostname, int port) throws IOException, UnknownHostException {
+    	sock = new Socket(hostname, port);
+    	inbuf = new BufferedReader(new InputStreamReader(sock.getInputStream()));
+    	outbuf = new BufferedWriter(new OutputStreamWriter(sock.getOutputStream()));
     }
 
     public void close() throws IOException {
-	deapi.close();
+    	sock.close();
     }
 
     public synchronized void send(String msg) throws IOException {
-	DecimalFormat formatter = new DecimalFormat("0000000000");
-	int len = msg.length();
+    	DecimalFormat formatter = new DecimalFormat("0000000000");
+    	byte[] bytes = msg.getBytes("ASCII");
+    	String asciiMsg = new String(bytes);
+    	int len = asciiMsg.length();
 
-	outbuf.write(formatter.format(len).getBytes(), 0, HeaderSize);
-	outbuf.write(msg.getBytes(), 0, len);
-	outbuf.flush();
+    	outbuf.write(formatter.format(len));
+    	outbuf.write(asciiMsg);
+    	outbuf.flush();
     }
 
     public Message recieve() throws IOException, DeapiException {
-	Message reply;
+    	Message reply;
 
-	inbuf.skip(HeaderSize);
-	reply = new Message(inbuf);
-	// skip over stupid, undocumented \n
-	inbuf.skip(1);
-	return reply;
+    	inbuf.skip(HeaderSize);
+    	reply = new Message(inbuf);
+    	// skip over stupid, undocumented \n
+    	//inbuf.skip(1);
+    	return reply;
     }
 }
 	

@@ -12,142 +12,154 @@
 
 package dealingtools.util;
 
-import java.io.*;
-import java.text.*;
-import java.util.*;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.FileHandler;
+import java.util.logging.Formatter;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogManager;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 public class Log {
-    private static File logfile;
-    private static String hostname;
-    private static PrintWriter logwriter;
-    private static int lineCount;
-    private static int maxLogSize;
-    private static DateFormat formatter;
+    private static Logger log = null;
+	private static String hostname;
+	private static Level globalLevel = Level.INFO;
+	private static final int maxLogSize = 100000000;
+	private static final int numLogFiles = 5;
 
-    private Log() {}
+    public static class NSLogStyleFormatter extends Formatter {
+    	private SimpleDateFormat nsLogDateFormat;
+    	public NSLogStyleFormatter() {
+    		super();
+    		nsLogDateFormat = new SimpleDateFormat("MMM dd HH:mm:ss.SSS");
+    	}
 
-    public static void start(String name, String logname) {
-	StringBuffer path;
-	// this returns colon...
-	//	String sep = System.getProperty("path.separator");
-	String sep = "/";
-	if (logname.startsWith(sep)) {
-	    // absolute
-	    path = new StringBuffer(logname);
-	} else {
-	    // relative
-	    String home = System.getProperty("user.home");
-	    path = new StringBuffer(home);
-	    path.append(sep);
-	    path.append("log");
-	    path.append(sep);
-	    path.append(logname);
-	    path.append(".log");
-	}
+        @Override
+    	public String format(LogRecord record) {
+    		
+    		// Create a StringBuffer to contain the formatted record
+    		// start with the date.
+    		StringBuffer sb = new StringBuffer();
+    		
+    		// Get the date from the LogRecord and add it to the buffer
+    		Date date = new Date(record.getMillis());
+    		sb.append(nsLogDateFormat.format(date));
+    		sb.append(" ");
+    		
+    		// Get the hostname
+            sb.append(hostname);
+            sb.append(" ");
+    		
+            // Get the classname
+            String className = record.getSourceClassName();
+            String methodName = record.getSourceMethodName();
+            if (className.length() == 0) {
+            	// incomplete Log record... go digging
+            	StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+            	StackTraceElement e = null;
+            	// look for who called us
+            	for (int i = 9; i < stackTrace.length; i++) {
+            		e = stackTrace[i];
+            		if (e.getLineNumber() != -1)
+            			break;
+            	}
+            	if (e != null) {
+            		className = e.getClassName();
+            		methodName = e.getMethodName();
+            	} else {
+            		className = "UnknownClass";
+            		methodName = "UnknownMethod";
+            	}
+            }
+            if (className.contains(".")) {
+            	String[] classPath = className.split("\\.");
+            	className = classPath[classPath.length - 1];
+            }
+            sb.append(className);
+            sb.append(String.format("(%s)", methodName));
+            
+            // And the process/thread ids
+            sb.append(String.format("[%d]/", record.getThreadID()));
+            
+    		// Get the level name and add it to the buffer
+    		sb.append(record.getLevel().getName());
+    		sb.append(": ");
+    		 
+    		// Get the formatted message (includes localisation 
+    		// and substitution of parameters) and add it to the buffer
+    		sb.append(formatMessage(record));
+    		sb.append("\n");
 
-	// open the logfile...
-	try {
-	    logfile = new File(path.toString());
-	    if (!logfile.exists()) {
-		new File(logfile.getParent()).mkdirs();
-	    }
-	    logwriter =
-		new PrintWriter(new BufferedWriter(new FileWriter(logfile)));
-	} catch (IOException e) {
-	    System.err.println(e.toString());
-	    start(name);
-	}
-	
-	Log.initialize(name);
+    		return sb.toString();
+    	}
     }
+    
+    public static void init(String logName) {
+    	String appName = Args.appName();
+    	
+    	LogManager logManager = LogManager.getLogManager();
+    	logManager.reset();
+    	
+    	log = Logger.getLogger(appName);
+    	
+    	NSLogStyleFormatter formatter = new NSLogStyleFormatter();
+        
+    	try {
+            hostname = InetAddress.getLocalHost().getHostName();
+		} catch (UnknownHostException e) {
+			hostname = "unknown";
+		}
+    	
+        if (logName != null) {
+            try {
+                Handler fileHandler =
+                    new FileHandler(logName, maxLogSize, numLogFiles, true);
+                log.setUseParentHandlers(false);
+                log.addHandler(fileHandler);
+                log.info(String.format("Starting log for %s", appName));
+            } catch (IOException e) {
+                // ignore it... just log to the console
+            }
+        } else {
+        	Handler consoleHandler = new ConsoleHandler();
+        	log.addHandler(consoleHandler);
+        }
 
-    public static void start(String name) {
-	logfile = null;
-	logwriter = new PrintWriter(System.out, true);
-	Log.initialize(name);
+        // redirect stdout and stderr to our logging stream
+        LoggingOutputStream los = new LoggingOutputStream(log, globalLevel);
+        PrintStream ps = new PrintStream(los, true);
+        System.setOut(ps);
+        System.setErr(ps);
+        
+        for (Handler handler : log.getHandlers()) {
+			handler.setFormatter(formatter);
+			handler.setLevel(globalLevel);
+		}
     }
-
-    private static void initialize(String name) {
-	formatter = DateFormat.getDateTimeInstance(DateFormat.SHORT,
-						   DateFormat.SHORT);
-	hostname = name;
-	lineCount = 0;
-	maxLogSize = 25000000; // 2.5MB Max
-	Log.write("Log", "NEW LOG");
+    
+    public static Logger logger() {
+    	if (log == null)
+    		Log.init(null);
+    	return log;
     }
-
-    private static String timestamp() {
-	return formatter.format(new Date());
-    }
-  
-    private static void recycle() {
-	String path = logfile.getPath();
-	String name = logfile.getName();
-	String fullname = path + name;
-	String oldname = name + "-old";
-
-	logwriter.println("Recycling logfile");
-	logfile.renameTo(new File(oldname));
-	logwriter.close();
-	Log.start(hostname, fullname);
-    }
-  
-    private static void header(String module) {
-	// every 100 lines, check the file size is not too big
-	if ((logfile != null) && ((lineCount % 100) == 0)) {
-	    if (logfile.length() > maxLogSize) {
-		Log.recycle();
-	    }
-	}
-	lineCount++;
-	logwriter.print(Log.timestamp());
-	logwriter.print(" ");
-	logwriter.print(hostname);
-	logwriter.print(" ");
-	logwriter.print(module);
-	logwriter.print(": ");
-    }
-
-    public static void write(String module, String entry) {
-	Log.header(module);
-	logwriter.println(entry);
-	logwriter.flush();
-    }
-
-    public static void write(String module, Object[] entries) {
-	Log.header(module);
-
-	for (int i = 0; i < entries.length; i++) {
-	    logwriter.print(entries[i]);
-	    if (i < entries.length) {
-		logwriter.print(", ");
-	    }
-	}
-	logwriter.print("\n");
-	logwriter.flush();
-    }
-    public static void debug(String module, String entry) {
-	if (Debug.isOn()) {
-	    Log.write(module, entry);
-	}
-    }
-			     
-    public static void debug(String module, Object[] entries) {
-	if (Debug.isOn()) {
-	    Log.write(module, entries);
-	}
+    
+    public static void setLevel(Level level) {
+    	globalLevel = level;
+    	if (log != null) {
+    		for (Handler handler : log.getHandlers()) {
+    			handler.setLevel(globalLevel);
+    		}
+    	}
     }
 }
 
 /*
-  $Log$
+  $log$
 */
-
-
-
-
-
-
-
-
-

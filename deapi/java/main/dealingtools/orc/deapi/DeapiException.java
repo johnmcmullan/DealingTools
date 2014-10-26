@@ -13,7 +13,11 @@
 package dealingtools.orc.deapi;
 
 public class DeapiException extends Exception {
-    private int err;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	private int err;
 
     public DeapiException(int errno, String error_message) {
 	super(error_message);
