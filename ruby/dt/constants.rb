@@ -16,7 +16,7 @@ module Constants
 
   # having these defined here stops us running into difficulty
   STRIKEPRICE_MULTIPLICATION_FACTOR = 1000
-  JMM_INSTRUMENT_ID_STRING = "%s%s%s%08.0f%08.0f"
+  DT_INSTRUMENT_ID_STRING = "%s%s%s%08.0f%08.0f"
 
   # comparison of floating point numbers done to this many decimal places
   FLOAT_SIGNIFICANT_FIGURES = 5
